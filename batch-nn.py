@@ -7,15 +7,15 @@ class Layer:
     def __init__(self, shape, learning_rate=0.01, activation='sigmoid'):
         self.id = 'None'
         self.name = 'Base'
-        self.weight = np.random.randn(shape[0], shape[1]) * np.sqrt(2.0 / shape[0])
-        self.bias = np.zeros((1, shape[1]))
+        self.weight = np.random.randn(shape[0], shape[1]) * np.sqrt(2.0 / shape[0]) if shape else None
+        self.bias = np.zeros((1, shape[1])) if shape else None
         self.learning_rate = learning_rate
        
-        if (activation not in Activations):
+        if (activation != None and activation not in Activations):
             raise ValueError(f'Invalid activation function provided: {activation}')
         
-        self.activation = Activations[activation]['main']
-        self.activationDerivative = Activations[activation]['derivative']
+        self.activation = Activations[activation]['main'] if activation else None
+        self.activationDerivative = Activations[activation]['derivative'] if activation else None
         
         self.delta = None
         self.input = None
@@ -25,7 +25,7 @@ class Layer:
         
         
     def __str__(self):
-        return f"Layer {self.id}\n"
+        return f"Layer {self.name}\n"
     
     def forward(self, X):
         self.input = X
@@ -57,6 +57,34 @@ class Output(Layer):
         
     def calculateDelta(self, Y):
         self.delta = self.a - Y
+        
+class Dropout(Layer):
+    def __init__(self, dropout_rate=0.5):
+        super().__init__(shape=None, learning_rate=None, activation=None)
+        self.name = 'NN_DROPOUT'
+        self.mask = None
+        self.dropout_rate = dropout_rate
+        
+    def forward(self, X, training=False):
+        self.input = X
+
+        self.mask = np.random.rand(*X.shape) > self.dropout_rate
+            
+        if training:
+            self.a = X * self.mask / (1 - self.dropout_rate)
+        else:
+            self.a = X
+            
+        return self.a
+    
+    def calculateDelta(self, succeedingLayer):        
+        self.delta = np.dot(succeedingLayer.delta, succeedingLayer.weight.T)
+        
+    def backward(self, *args):
+        delta = self.delta
+        return delta * self.mask
+        
+        
 
 def predict(X, y):
     forwardInput = X
@@ -80,6 +108,7 @@ for i in range(len(arch) - 1):
         layers.append(Output(shape, learning_rate=0.1))
     else:
         layers.append(Dense(shape, learning_rate=0.1))
+        layers.append(Dropout())
         
 epochs = 10
 batch_size = 32
@@ -96,14 +125,21 @@ for epoch in range(epochs):
         
         forwardInput = batch_x
         for layer in layers:
+            if isinstance(layer, Dropout):
+                forwardInput = layer.forward(forwardInput, training=True)
+                continue
+            
             forwardInput = layer.forward(forwardInput)
         
         for i in range(len(layers) - 1, -1, -1):
             if (i == len(layers) - 1):
                 layers[i].calculateDelta(batch_y)
+            elif isinstance(layers[i + 1], Dropout):
+                layers[i].calculateDelta(layers[i + 2]) 
             else:
                 layers[i].calculateDelta(layers[i + 1])
             
             layers[i].backward()
 
     predict(x_train_images, y_train_labels)
+    
