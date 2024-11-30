@@ -15,7 +15,7 @@ class Layer:
             raise ValueError(f'Invalid activation function provided: {activation}')
         
         self.activation = Activations[activation]['main']
-        self.activationDerivative = Activations[activation]['derivative']
+        self.activationDerivative = Activations[activation]['derivative'] if 'derivative' in Activations[activation] else None
         
         self.delta = None
         self.input = None
@@ -67,9 +67,21 @@ class NeuralNetwork:
         self.layers = layers
         self.batch_size = batch_size
         
+    def __check(self):
+        if (len(self.layers) == 0):
+            raise ValueError("Neural Network layer stack is empty")
+        if (not isinstance(self.layers[len(layers) - 1], Output)):
+            raise ValueError("Neural Network is missing an output layer")
+        
+        for i, layer in enumerate(self.layers):
+            if (i != len(layers) - 1 and isinstance(layer, Output)):
+                raise ValueError("Invalid Output layer placement in layer stack. Output layer should come last")
         
     def layers_from_list(self, layers):
         self.layers = layers
+        
+        for layer in self.layers:
+            print(layer)
     
     def layers_from_narray(self, layersMap):
         for i in range(len(layersMap) - 1):
@@ -92,6 +104,8 @@ class NeuralNetwork:
         print(f"Accuracy: {accuracy * 100:.2f}%")
             
     def train(self, X, y):
+        self.__check()
+        
         for epoch in range(self.epochs):
             print(f"{epoch + 1}/{self.epochs} Epochs")
             shuffle_idx = np.random.permutation(len(X))
@@ -118,16 +132,23 @@ class NeuralNetwork:
         
 
 
-
+np.random.seed(42) # reproducability
 # Load data
 x_train_images, x_test_images, y_train_labels, y_test_labels = get_mnist()
 
 # Network architecture
-arch = [784, 128, 10]
+arch = [784, 256, 128, 32, 10]
+layers = [
+    Dense((784, 64), activation='relu', id=0),
+    Dense((64, 32), activation='relu', id=1),
+    Output((32, 10), activation='softmax', id=2),
+    
+]
 nn = NeuralNetwork(
-    epochs=10,
+    epochs=20,
     learning_rate=0.1,
     batch_size=32
 )
-nn.layers_from_narray(arch)
+# nn.layers_from_narray(arch)
+nn.layers_from_list(layers)
 nn.train(x_train_images, y_train_labels)

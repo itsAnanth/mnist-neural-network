@@ -1,6 +1,9 @@
 import numpy as np
 from data import get_mnist
 
+def leakyRelu(x, alpha):
+    return x if x > 0 else alpha * x
+
 def relu(x):
     return np.maximum(0, x)
 
