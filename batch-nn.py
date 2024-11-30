@@ -4,8 +4,8 @@ from Activations import Activations
 from tqdm import tqdm
 
 class Layer:
-    def __init__(self, shape, learning_rate=0.01, activation='sigmoid'):
-        self.id = 'None'
+    def __init__(self, shape, learning_rate=0.01, activation='sigmoid', id=None):
+        self.id = id
         self.name = 'Base'
         self.weight = np.random.randn(shape[0], shape[1]) * np.sqrt(2.0 / shape[0])
         self.bias = np.zeros((1, shape[1]))
@@ -25,7 +25,7 @@ class Layer:
         
         
     def __str__(self):
-        return f"Layer {self.id}\n"
+        return f"Layer_{self.name}_{self.id}"
     
     def forward(self, X):
         self.input = X
@@ -43,67 +43,91 @@ class Layer:
         pass
 
 class Dense(Layer):
-    def __init__(self, shape, learning_rate=0.01, activation='sigmoid'):
-        super().__init__(shape, learning_rate, activation)
+    def __init__(self, shape, learning_rate=0.01, activation='sigmoid', id=None):
+        super().__init__(shape, learning_rate, activation, id)
         self.name = 'NN_DENSE'
         
     def calculateDelta(self, succeedingLayer):
         self.delta = np.dot(succeedingLayer.delta, succeedingLayer.weight.T) * self.activationDerivative(self.z)
 
 class Output(Layer):
-    def __init__(self, shape, learning_rate=0.01, activation='sigmoid'):
-        super().__init__(shape, learning_rate, activation)
+    def __init__(self, shape, learning_rate=0.01, activation='sigmoid', id=None):
+        super().__init__(shape, learning_rate, activation, id)
         self.name = 'NN_OUTPUT'
         
     def calculateDelta(self, Y):
         self.delta = self.a - Y
+        
+class NeuralNetwork:
+    def __init__(self, layers=[], epochs=10, learning_rate=0.1, batch_size=32):
+        self.epochs = epochs
+        
+        # applied to all layers when NN is created from a list of numbers representing neurons for each layer
+        self.learning_rate = learning_rate
+        self.layers = layers
+        self.batch_size = batch_size
+        
+        
+    def layers_from_list(self, layers):
+        self.layers = layers
+    
+    def layers_from_narray(self, layersMap):
+        for i in range(len(layersMap) - 1):
+            shape = (layersMap[i], layersMap[i + 1])
+            
+            if (i == len(layersMap) - 2):
+                self.layers.append(Output(shape, learning_rate=self.learning_rate, id=i))
+            else:
+                self.layers.append(Dense(shape, learning_rate=self.learning_rate, id=i))
+                
+        for layer in self.layers:
+            print(layer)
+            
+    def predict(self, X, y):
+        forwardInput = X
+        for layer in self.layers:
+            forwardInput = layer.forward(forwardInput)
+        predictions = forwardInput
+        accuracy = np.mean(np.argmax(predictions, axis=1) == np.argmax(y, axis=1))
+        print(f"Accuracy: {accuracy * 100:.2f}%")
+            
+    def train(self, X, y):
+        for epoch in range(self.epochs):
+            print(f"{epoch + 1}/{self.epochs} Epochs")
+            shuffle_idx = np.random.permutation(len(X))
+            X_shuffled = X[shuffle_idx]
+            y_shuffled = y[shuffle_idx]
+            
+            for i in tqdm(range(0, len(X), self.batch_size), desc="Batches", ncols=100, leave=True):
+                batch_x = X_shuffled[i:i+self.batch_size]
+                batch_y = y_shuffled[i:i+self.batch_size]
+                
+                forwardInput = batch_x
+                for layer in self.layers:
+                    forwardInput = layer.forward(forwardInput)
+                
+                for i in range(len(self.layers) - 1, -1, -1):
+                    if (i == len(self.layers) - 1):
+                        self.layers[i].calculateDelta(batch_y)
+                    else:
+                        self.layers[i].calculateDelta(self.layers[i + 1])
+                    
+                    self.layers[i].backward()
 
-def predict(X, y):
-    forwardInput = X
-    for layer in layers:
-        forwardInput = layer.forward(forwardInput)
-    predictions = forwardInput
-    accuracy = np.mean(np.argmax(predictions, axis=1) == np.argmax(y, axis=1))
-    print(f"Accuracy: {accuracy * 100:.2f}%")
+            self.predict(X, y)
+        
+
+
 
 # Load data
 x_train_images, x_test_images, y_train_labels, y_test_labels = get_mnist()
 
 # Network architecture
 arch = [784, 128, 10]
-layers = []
-
-for i in range(len(arch) - 1):
-    shape = (arch[i], arch[i + 1])
-    
-    if (i == len(arch) - 2):
-        layers.append(Output(shape, learning_rate=0.1))
-    else:
-        layers.append(Dense(shape, learning_rate=0.1))
-        
-epochs = 10
-batch_size = 32
-
-for epoch in range(epochs):
-    print(f"{epoch + 1}/{epochs} Epochs")
-    shuffle_idx = np.random.permutation(len(x_train_images))
-    X_shuffled = x_train_images[shuffle_idx]
-    y_shuffled = y_train_labels[shuffle_idx]
-    
-    for i in tqdm(range(0, len(x_train_images), batch_size), desc="Batches", ncols=100, leave=True):
-        batch_x = X_shuffled[i:i+batch_size]
-        batch_y = y_shuffled[i:i+batch_size]
-        
-        forwardInput = batch_x
-        for layer in layers:
-            forwardInput = layer.forward(forwardInput)
-        
-        for i in range(len(layers) - 1, -1, -1):
-            if (i == len(layers) - 1):
-                layers[i].calculateDelta(batch_y)
-            else:
-                layers[i].calculateDelta(layers[i + 1])
-            
-            layers[i].backward()
-
-    predict(x_train_images, y_train_labels)
+nn = NeuralNetwork(
+    epochs=10,
+    learning_rate=0.1,
+    batch_size=32
+)
+nn.layers_from_narray(arch)
+nn.train(x_train_images, y_train_labels)
