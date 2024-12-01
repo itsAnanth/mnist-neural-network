@@ -2,14 +2,15 @@ import numpy as np
 from data import get_mnist
 from Activations import Activations
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+import pickle as pkl
 
 class Layer:
-    def __init__(self, shape, learning_rate=0.01, activation='sigmoid', id=None):
+    def __init__(self, shape, activation='sigmoid', id=None):
         self.id = id
         self.name = 'Base'
         self.weight = np.random.randn(shape[0], shape[1]) * np.sqrt(2.0 / shape[0])
         self.bias = np.zeros((1, shape[1]))
-        self.learning_rate = learning_rate
        
         if (activation not in Activations):
             raise ValueError(f'Invalid activation function provided: {activation}')
@@ -31,28 +32,30 @@ class Layer:
         self.input = X
         self.z = np.dot(X, self.weight) + self.bias
         self.a = self.activation(self.z)
+        
         return self.a
     
-    def backward(self, *args):
+    def backward(self, **kwargs):
+        learning_rate = kwargs['learning_rate'] if 'learning_rate' in kwargs else 0.1
         delta = self.delta
-        self.weight -= self.learning_rate * np.dot(self.input.T, delta) / self.input.shape[0]
-        self.bias -= self.learning_rate * np.sum(delta, axis=0, keepdims=True) / self.input.shape[0]
+        self.weight -= learning_rate * np.dot(self.input.T, delta) / self.input.shape[0]
+        self.bias -= learning_rate * np.sum(delta, axis=0, keepdims=True) / self.input.shape[0]
         return delta
     
     def calculateDelta(self, *args):
         pass
 
 class Dense(Layer):
-    def __init__(self, shape, learning_rate=0.01, activation='sigmoid', id=None):
-        super().__init__(shape, learning_rate, activation, id)
+    def __init__(self, shape, activation='sigmoid', id=None):
+        super().__init__(shape, activation, id)
         self.name = 'NN_DENSE'
         
     def calculateDelta(self, succeedingLayer):
         self.delta = np.dot(succeedingLayer.delta, succeedingLayer.weight.T) * self.activationDerivative(self.z)
 
 class Output(Layer):
-    def __init__(self, shape, learning_rate=0.01, activation='sigmoid', id=None):
-        super().__init__(shape, learning_rate, activation, id)
+    def __init__(self, shape, activation='sigmoid', id=None):
+        super().__init__(shape, activation, id)
         self.name = 'NN_OUTPUT'
         
     def calculateDelta(self, Y):
@@ -88,14 +91,14 @@ class NeuralNetwork:
             shape = (layersMap[i], layersMap[i + 1])
             
             if (i == len(layersMap) - 2):
-                self.layers.append(Output(shape, learning_rate=self.learning_rate, id=i))
+                self.layers.append(Output(shape, id=i))
             else:
-                self.layers.append(Dense(shape, learning_rate=self.learning_rate, id=i))
+                self.layers.append(Dense(shape, id=i))
                 
         for layer in self.layers:
             print(layer)
             
-    def predict(self, X, y):
+    def crossValidate(self, X, y):
         forwardInput = X
         for layer in self.layers:
             forwardInput = layer.forward(forwardInput)
@@ -103,7 +106,14 @@ class NeuralNetwork:
         accuracy = np.mean(np.argmax(predictions, axis=1) == np.argmax(y, axis=1))
         print(f"Accuracy: {accuracy * 100:.2f}%")
             
-    def train(self, X, y):
+    def predict(self, X):
+        forwardInput = X
+        for layer in self.layers:
+            forwardInput = layer.forward(forwardInput)
+        predictions = forwardInput
+        return predictions
+            
+    def train(self, X, y, save_layers=True):
         self.__check()
         
         for epoch in range(self.epochs):
@@ -126,9 +136,26 @@ class NeuralNetwork:
                     else:
                         self.layers[i].calculateDelta(self.layers[i + 1])
                     
-                    self.layers[i].backward()
+                    self.layers[i].backward(learning_rate=self.learning_rate)
 
-            self.predict(X, y)
+            self.crossValidate(X, y)
+
+        save_layers and self.dump_layers()
+            
+    def dump_layers(self):
+        with open('layers.pkl', 'wb') as file:
+            print("dumping layers into layers.pkl")
+            pkl.dump(self.layers, file)
+            
+    def load_layers(self):
+        try:
+            with open('layers.pkl', 'rb') as file:
+                data = pkl.load(file)
+                self.layers = data
+        except FileNotFoundError:
+            raise Exception("layers.pkl not found, train the model first to save model parameters")
+
+        
         
 
 
@@ -145,10 +172,18 @@ layers = [
     
 ]
 nn = NeuralNetwork(
-    epochs=20,
-    learning_rate=0.1,
+    epochs=10,
+    learning_rate=0.01,
     batch_size=32
 )
+# nn.load_layers()
 # nn.layers_from_narray(arch)
 nn.layers_from_list(layers)
 nn.train(x_train_images, y_train_labels)
+
+
+predicted = nn.predict(x_test_images[0])
+plt.imshow(x_test_images[0].reshape(28, 28))
+
+plt.title(f"Actual value: {np.argmax(y_test_labels[0])}\npredicted value: {np.argmax(predicted)}")
+plt.show()
